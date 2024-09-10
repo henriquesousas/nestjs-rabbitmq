@@ -23,7 +23,24 @@ export class RabbitmqService {
 
   async publishInQueue(queue: Queue, message: string) {
     await this.start();
-    this.channel.sendToQueue(queue, Buffer.from(message));
+
+    const dlxExchange = 'dlx_exchange';
+    const dlq = `dlq_${queue}`;
+    const dlqRoutingKey = 'dlq_key';
+
+    this.channel.assertQueue(queue, {
+      durable: true,
+      arguments: {
+        'x-dead-letter-exchange': dlxExchange,
+        'x-dead-letter-routing-key': 'dlq_key',
+        'x-message-ttl': 20000,
+      },
+    });
+    this.channel.assertExchange(dlxExchange, 'direct', { durable: true });
+    this.channel.assertQueue(dlq, { durable: true });
+    this.channel.bindQueue(dlq, dlxExchange, dlqRoutingKey);
+
+    this.channel.sendToQueue(queue, Buffer.from(message), { persistent: true });
   }
 
   async publishInExchange(
@@ -32,15 +49,47 @@ export class RabbitmqService {
     message: string,
   ) {
     await this.start();
+
+    const dlxExchange = 'dlx_exchange';
+    const dlq = `dlq_${exchange}`;
+    const dlqRoutingKey = 'dlq_key';
+
+    this.channel.assertExchange(dlxExchange, 'direct', { durable: true });
+    this.channel.assertQueue(dlq, { durable: true });
+    this.channel.bindQueue(dlq, dlxExchange, dlqRoutingKey);
+
     this.channel.publish(exchange, routingKey, Buffer.from(message));
   }
 
   async consume(queue: Queue, callback?: (message: Message) => void) {
-    return this.channel.consume(queue, (message) => {
-      if (callback) {
-        callback(message);
-      }
-      this.channel.ack(message);
+    await this.start();
+
+    const dlxExchange = 'dlx_exchange';
+    const dlq = `dlq_${queue}`;
+    const dlqRoutingKey = 'dlq_key';
+
+    this.channel.assertQueue(queue, {
+      durable: true,
+      arguments: {
+        'x-dead-letter-exchange': dlxExchange,
+        'x-dead-letter-routing-key': dlqRoutingKey,
+        'x-message-ttl': 20000,
+      },
     });
+
+    this.channel.assertQueue(dlq, { durable: true });
+
+    return this.channel.consume(
+      queue,
+      (message) => {
+        if (callback) {
+          callback(message);
+        }
+        // this.channel.nack(message, false, false); //rejeita
+        this.channel.nack(message, false, true); //reprocessa
+        // channel.ack(msg); //ready ok
+      },
+      { noAck: false },
+    );
   }
 }

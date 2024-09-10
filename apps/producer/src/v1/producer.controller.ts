@@ -1,5 +1,5 @@
 import { Controller, Get } from '@nestjs/common';
-import { RabbitmqService } from './v1/rabbitmq/rabbitmq.service';
+import { RabbitmqService } from './rabbitmq/rabbitmq.service';
 
 @Controller('v1')
 export class ProducerController {

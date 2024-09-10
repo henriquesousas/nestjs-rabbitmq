@@ -23,23 +23,7 @@ export class RabbitmqService {
 
   async publishInQueue(queue: Queue, message: string) {
     await this.start();
-
-    const dlxExchange = 'dlx_exchange';
-    const dlq = `dlq_${queue}`;
-    const dlqRoutingKey = 'dlq_key';
-
-    this.channel.assertQueue(queue, {
-      durable: true,
-      arguments: {
-        'x-dead-letter-exchange': dlxExchange,
-        'x-dead-letter-routing-key': 'dlq_key',
-        'x-message-ttl': 20000,
-      },
-    });
-    this.channel.assertExchange(dlxExchange, 'direct', { durable: true });
-    this.channel.assertQueue(dlq, { durable: true });
-    this.channel.bindQueue(dlq, dlxExchange, dlqRoutingKey);
-
+    this.makeAsserts(queue);
     this.channel.sendToQueue(queue, Buffer.from(message), { persistent: true });
   }
 
@@ -63,22 +47,7 @@ export class RabbitmqService {
 
   async consume(queue: Queue, callback?: (message: Message) => void) {
     await this.start();
-
-    const dlxExchange = 'dlx_exchange';
-    const dlq = `dlq_${queue}`;
-    const dlqRoutingKey = 'dlq_key';
-
-    this.channel.assertQueue(queue, {
-      durable: true,
-      arguments: {
-        'x-dead-letter-exchange': dlxExchange,
-        'x-dead-letter-routing-key': dlqRoutingKey,
-        'x-message-ttl': 20000,
-      },
-    });
-
-    this.channel.assertQueue(dlq, { durable: true });
-
+    this.makeAsserts(queue);
     return this.channel.consume(
       queue,
       (message) => {
@@ -91,5 +60,23 @@ export class RabbitmqService {
       },
       { noAck: false },
     );
+  }
+
+  private makeAsserts(queue: Queue) {
+    const dlxExchange = 'dlx_exchange';
+    const dlq = `dlq_${queue}`;
+    const dlqRoutingKey = 'dlq_key';
+
+    this.channel.assertQueue(queue, {
+      durable: true,
+      arguments: {
+        'x-dead-letter-exchange': dlxExchange,
+        'x-dead-letter-routing-key': 'dlq_key',
+        'x-message-ttl': 20000,
+      },
+    });
+    this.channel.assertExchange(dlxExchange, 'direct', { durable: true });
+    this.channel.assertQueue(dlq, { durable: true });
+    this.channel.bindQueue(dlq, dlxExchange, dlqRoutingKey);
   }
 }
